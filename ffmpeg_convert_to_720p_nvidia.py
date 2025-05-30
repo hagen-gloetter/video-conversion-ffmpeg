@@ -37,7 +37,7 @@ def process_folder(input_folder=None):
     done_folder.mkdir(exist_ok=True)
     
     video_files = [
-        f for f in input_folder.glob('*.avi') 
+        f for f in input_folder.glob('*.mp4') 
         if not f.name.startswith('.')
     ]
     
