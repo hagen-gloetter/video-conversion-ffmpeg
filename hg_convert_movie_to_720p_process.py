@@ -48,117 +48,137 @@ Für Hardware-Beschleunigung können Sie die FFmpeg-Parameter anpassen (z.B. -c:
 import os
 import subprocess
 import concurrent.futures
-from datetime import datetime, timedelta
-import multiprocessing
 import time
-from tqdm import tqdm
+import multiprocessing
+from datetime import datetime, timedelta
+from collections import defaultdict
 
-def make_720p(input_file):
+# Konfiguration
+TERMINAL_WIDTH = 80
+UPDATE_INTERVAL = 0.5  # Sekunden zwischen Updates
+
+# Globale Fortschrittsdaten
+progress_data = defaultdict(dict)
+progress_lock = multiprocessing.Lock()
+start_times = {}
+
+def make_720p(input_file, thread_id):
     output_file = os.path.join("720p", os.path.basename(input_file))
     start_time = time.time()
+    start_times[thread_id] = start_time
+    
     try:
-        # FFmpeg command with hardware acceleration if available
         cmd = [
             'ffmpeg',
             '-hide_banner',
-            '-loglevel', 'error',
             '-i', input_file,
             '-s', 'hd720',
             '-c:v', 'libx265',
             '-crf', '23',
-            '-preset', 'fast',  # Faster encoding with slightly larger file size
+            '-preset', 'fast',
             output_file
         ]
         
-        # Execute the command
-        process = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        process = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True)
         
-        # Move original file to done directory
-        os.rename(input_file, os.path.join("done", os.path.basename(input_file)))
+        while process.poll() is None:
+            # Einfache Fortschrittsberechnung basierend auf Laufzeit
+            elapsed = time.time() - start_time
+            with progress_lock:
+                progress_data[thread_id] = {
+                    'filename': os.path.basename(input_file),
+                    'progress': min(0.99, elapsed / 10),  # Temporärer Platzhalter
+                    'start_time': start_time,
+                    'status': 'running'
+                }
+            time.sleep(0.5)
         
-        duration = timedelta(seconds=round(time.time() - start_time))
-        return (True, input_file, duration)
-    except subprocess.CalledProcessError as e:
-        duration = timedelta(seconds=round(time.time() - start_time))
-        return (False, input_file, duration, str(e))
+        # Nach Abschluss aktualisieren
+        with progress_lock:
+            progress_data[thread_id]['progress'] = 1.0
+            progress_data[thread_id]['status'] = 'done' if process.returncode == 0 else 'failed'
+        
+        if process.returncode == 0:
+            os.rename(input_file, os.path.join("done", os.path.basename(input_file)))
+            return True, input_file, timedelta(seconds=round(time.time() - start_time))
+        else:
+            return False, input_file, timedelta(seconds=round(time.time() - start_time)), "FFmpeg Error"
+    
     except Exception as e:
-        duration = timedelta(seconds=round(time.time() - start_time))
-        return (False, input_file, duration, str(e))
+        with progress_lock:
+            progress_data[thread_id]['status'] = 'error'
+        return False, input_file, timedelta(seconds=round(time.time() - start_time)), str(e)
+
+def draw_progress_bars(total_files, processed_count):
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    print(f"Video-Konvertierung | Dateien: {processed_count}/{total_files}")
+    print("=" * TERMINAL_WIDTH)
+    
+    active_threads = {k: v for k, v in progress_data.items() if v.get('status') == 'running'}
+    
+    for thread_id, data in sorted(active_threads.items()):
+        progress = data.get('progress', 0)
+        bar_width = TERMINAL_WIDTH - 30
+        filled = int(round(bar_width * progress))
+        bar = '#' * filled + '-' * (bar_width - filled)
+        
+        elapsed = timedelta(seconds=int(time.time() - data['start_time']))
+        print(f"Thread {thread_id}: {data['filename'][:20].ljust(20)} "
+              f"[{bar}] {progress*100:5.1f}% "
+              f"({elapsed})")
+    
+    print("=" * TERMINAL_WIDTH)
 
 def main():
-    # Create directories if they don't exist
     os.makedirs("720p", exist_ok=True)
     os.makedirs("done", exist_ok=True)
 
-    # Check if ffmpeg is available
+    # FFmpeg Verfügbarkeit prüfen
     try:
         subprocess.run(['ffmpeg', '-version'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print("ffmpeg found")
+        print("FFmpeg gefunden - Starte Konvertierung...")
     except:
-        print("ffmpeg NOT found")
+        print("Fehler: FFmpeg nicht gefunden!")
         exit(1)
 
-    # Supported file extensions
+    # Dateien finden
     extensions = ('.mp4', '.wmv', '.mov', '.mkv')
     files_to_process = [f for f in os.listdir('.') if os.path.isfile(f) and f.lower().endswith(extensions)]
-
+    
     if not files_to_process:
-        print("No video files found to process.")
+        print("Keine passenden Videodateien gefunden.")
         return
 
     total_files = len(files_to_process)
-    print(f"Found {total_files} files to process")
-    print("Starting processing at:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    print("="*80)
-
-    # Use ProcessPoolExecutor for CPU-bound tasks (better than ThreadPool for FFmpeg)
-    num_workers = multiprocessing.cpu_count()
-    print(f"Using {num_workers} workers for parallel processing")
-    print("="*80)
+    num_workers = min(multiprocessing.cpu_count(), total_files)
+    
+    print(f"Verarbeite {total_files} Dateien mit {num_workers} Threads...")
+    time.sleep(1)
 
     processed_count = 0
-    success_count = 0
-    fail_count = 0
+    start_time = time.time()
 
-    # Create progress bar
-    with tqdm(total=total_files, desc="Overall Progress", unit="file") as pbar:
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-            # Submit all tasks
-            future_to_file = {executor.submit(make_720p, file): file for file in files_to_process}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(make_720p, file, i): (i, file) 
+                for i, file in enumerate(files_to_process)}
+        while futures:
+            done, _ = concurrent.futures.wait(futures, timeout=UPDATE_INTERVAL)
+            draw_progress_bars(total_files, processed_count)
             
-            # Process results as they complete
-            for future in concurrent.futures.as_completed(future_to_file):
-                file = future_to_file[future]
+            for future in done:
+                thread_id, file = futures[future]
                 processed_count += 1
-                try:
-                    result = future.result()
-                    if result[0]:  # Success case
-                        success_count += 1
-                        print(f"\n✅ Success: {file} (Duration: {result[2]})")
-                    else:  # Error case
-                        fail_count += 1
-                        print(f"\n❌ Failed: {file} (Duration: {result[2]}, Error: {result[3]})")
-                    
-                    # Update progress
-                    percent_complete = (processed_count / total_files) * 100
-                    pbar.set_postfix({
-                        'Success': f'{success_count}/{total_files}',
-                        'Failed': fail_count,
-                        'Completed': f'{percent_complete:.1f}%'
-                    })
-                    pbar.update(1)
-                    
-                except Exception as e:
-                    fail_count += 1
-                    print(f"\n⚠️ Exception with {file}: {str(e)}")
-                    pbar.update(1)
+                del futures[future]
+                # Thread-Daten aufräumen
+                with progress_lock:
+                    if thread_id in progress_data:
+                        progress_data[thread_id]['status'] = 'completed'
 
-    print("="*80)
-    print("Processing complete!")
-    print(f"Total files: {total_files}")
-    print(f"Successful: {success_count}")
-    print(f"Failed: {fail_count}")
-    print("Finished at:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # Finaler Status
+    print("\n" + "=" * TERMINAL_WIDTH)
+    print(f"Konvertierung abgeschlossen in {timedelta(seconds=round(time.time() - start_time))}")
+    print(f"Verarbeitete Dateien: {processed_count}/{total_files}")
 
 if __name__ == "__main__":
     main()
