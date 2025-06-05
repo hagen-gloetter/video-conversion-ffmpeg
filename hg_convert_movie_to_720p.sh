@@ -22,7 +22,7 @@ fi
 
 function make_ffmpg {
     f="$1"
-    time ffmpeg -hide_banner -loglevel error -i "$f" -s hd720 -c:v libx265 -crf 23  "720p/$f" >/dev/null 2>&1 
+    ffmpeg -hide_banner -loglevel error -i "$f" -s hd720 -c:v libx265 -crf 23  "720p/$f" >/dev/null 2>&1 
     mv "$f" "done/$f"
 
 }
@@ -35,8 +35,6 @@ do
     ((i++ == 0)) && wait
     echo "###########################################################################" 
     echo "############################ $COUNTER Processing $FN ################################" 
-    echo "###########################################################################" 
-    date
     echo "###########################################################################" 
     # old time ffmpeg -i "$f" -s hd720 -c:v libx264 -crf 23 -c:a aac -strict -2 "720p/$f"
     ((COUNTER = COUNTER + 1))
