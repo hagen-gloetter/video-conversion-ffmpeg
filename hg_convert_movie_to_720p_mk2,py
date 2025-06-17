@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+# hg_convert_to_720p_h265.py - Python Version
+
+import os
+import subprocess
+import concurrent.futures
+from datetime import datetime
+import logging
+import shutil
+
+# Konfiguration
+OUTPUT_DIR = "720p"
+DONE_DIR = "done"
+LOG_FILE = f"conversion_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+QUALITY = 23
+MAX_THREADS = max(1, int(os.cpu_count() * 0.8))  # 80% der CPU-Kerne
+SUPPORTED_FORMATS = ('.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv')
+
+# Logging einrichten
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+logging.getLogger().addHandler(console)
+
+def check_codec():
+    """Prüft verfügbare Codecs"""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-encoders"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        return "libx265" in result.stdout
+    except FileNotFoundError:
+        logging.error("FFmpeg nicht gefunden!")
+        raise
+
+def convert_video(input_file):
+    """Konvertiert eine einzelne Datei"""
+    base_name = os.path.basename(input_file)
+    output_file = os.path.join(
+        OUTPUT_DIR,
+        f"{os.path.splitext(base_name)[0]}.mp4"
+    )
+    
+    logging.info(f"Starte Konvertierung: {base_name}")
+    start_time = datetime.now()
+
+    # Versuche H.265 zuerst
+    cmd = [
+        "ffmpeg", "-hide_banner", "-i", input_file,
+        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+        "-c:v", "libx265", "-x265-params", f"crf={QUALITY}",
+        "-preset", "slow",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        "-tag:v", "hvc1",
+        output_file
+    ]
+
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"H.265 fehlgeschlagen, versuche H.264: {base_name}")
+        cmd[5:7] = ["libx264", f"-crf={QUALITY}"]  # Ändere zu H.264
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError:
+            logging.error(f"Konvertierung fehlgeschlagen: {base_name}")
+            if os.path.exists(output_file):
+                os.remove(output_file)
+            return False
+
+    # Erfolgreich - verschiebe Original
+    try:
+        shutil.move(input_file, os.path.join(DONE_DIR, base_name))
+        duration = (datetime.now() - start_time).total_seconds()
+        logging.info(f"Erfolgreich: {base_name} ({duration:.1f}s)")
+        return True
+    except OSError as e:
+        logging.error(f"Verschieben fehlgeschlagen: {base_name} - {str(e)}")
+        return False
+
+def main():
+    """Hauptfunktion"""
+    logging.info(f"=== Starte Konvertierung ===")
+    
+    # Verzeichnisse erstellen
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(DONE_DIR, exist_ok=True)
+
+    # Verfügbare Dateien finden
+    files = [
+        f for f in os.listdir('.') 
+        if os.path.isfile(f) and f.lower().endswith(SUPPORTED_FORMATS)
+    ]
+
+    if not files:
+        logging.warning("Keine passenden Dateien gefunden!")
+        return
+
+    # Parallele Verarbeitung
+    success = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
+        results = executor.map(convert_video, files)
+        success = sum(results)  # Zähle Erfolge
+
+    logging.info(
+        f"\n=== Zusammenfassung ==="
+        f"\nDateien verarbeitet: {len(files)}"
+        f"\nErfolgreich: {success}"
+        f"\nFehlgeschlagen: {len(files) - success}"
+        f"\nOriginale in: {DONE_DIR}"
+        f"\nKonvertierte in: {OUTPUT_DIR}"
+    )
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        logging.error(f"Unbehandelter Fehler: {str(e)}", exc_info=True)
+        raise
