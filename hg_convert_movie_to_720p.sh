@@ -22,7 +22,7 @@ fi
 
 function make_ffmpg {
     f="$1"
-    ffmpeg -hide_banner -loglevel error -i "$f" -s hd720 -c:v libx265 -crf 23  "720p/$f" >/dev/null 2>&1 
+    time ffmpeg -hide_banner -loglevel error -i "$f" -s hd720 -c:v libx265 -crf 23  "720p/$f" >/dev/null 2>&1 
     mv "$f" "done/$f"
 
 }
