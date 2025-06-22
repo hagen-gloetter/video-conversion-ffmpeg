@@ -6,7 +6,9 @@ OUTPUT_DIR="720p"
 DONE_DIR="done"
 LOG_FILE="conversion_$(date +'%Y-%m-%d_%H-%M-%S').log"
 QUALITY=23
-MAX_THREADS=$(($(nproc) * 8 / 10))
+MAX_THREADS=$(($(nproc) * 8 / 10)) # 80% CPUs
+MAX_THREADS=$(($(nproc) /2)) # 50% CPUs
+MAX_THREADS=1
 
 # Codec-Prüfung
 if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q "libx265"; then
