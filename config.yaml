@@ -1,0 +1,155 @@
+# Video-Konvertierungs Konfiguration
+# Bearbeite diese Datei um die Standard-Einstellungen anzupassen
+
+# ============================================================================
+# ENCODING STANDARDS
+# ============================================================================
+encoding:
+  # Quality: 0-51 (0=lossless, 23=default, 51=worst)
+  crf_value: 22
+  
+  # Speed tradeoff: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+  preset: slow
+  
+  # Audio Bitrate: 128k, 192k, 256k, 320k, etc.
+  audio_bitrate: "128k"
+  
+  # Video Filter für Skalierung mit Aspect-Ratio Erhaltung
+  scale_filter: "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2"
+
+# ============================================================================
+# VORDEFINIERTE QUALITY PRESETS
+# ============================================================================
+presets:
+  # Schnelle Konvertierung - Gute Kompression, weniger Zeit
+  fast:
+    crf: 24
+    preset: fast
+    audio_bitrate: "128k"
+    description: "Schnell (2-3x), 45-50% Ersparnis"
+  
+  # Ausgewogene Einstellungen - Standard
+  balanced:
+    crf: 22
+    preset: medium
+    audio_bitrate: "128k"
+    description: "Ausgewogen, 55% Ersparnis"
+  
+  # Hohe Qualität - Beste Kompression
+  high_quality:
+    crf: 20
+    preset: slow
+    audio_bitrate: "192k"
+    description: "Beste Qualität, 60% Ersparnis, langsam"
+  
+  # Ultra-Qualität - Maximum Quality/Kompression
+  ultra:
+    crf: 18
+    preset: veryslow
+    audio_bitrate: "256k"
+    description: "Ultra (sehr langsam), 65% Ersparnis, 4+ Stunden pro GB"
+
+# ============================================================================
+# VERZEICHNISSE
+# ============================================================================
+directories:
+  output: "720p"
+  done: "done"
+  logs: "logs"
+
+# ============================================================================
+# PARALLEL PROCESSING
+# ============================================================================
+parallel:
+  # Prozentsatz der CPU-Kerne zu nutzen (0.8 = 80%)
+  cpu_usage: 0.8
+  
+  # Maximale parallele Jobs (nutzt cpu_usage falls 0)
+  max_threads: 0
+
+# ============================================================================
+# DATEIFORMATE
+# ============================================================================
+formats:
+  supported:
+    - mp4
+    - avi
+    - mov
+    - mkv
+    - webm
+    - wmv
+    - flv
+    - m4v
+    - mts
+    - m2ts
+
+# ============================================================================
+# FILTER & OPTIONEN
+# ============================================================================
+filters:
+  # Minimale Dateigröße (0 = keine Limit)
+  min_file_size_mb: 0
+  
+  # Minimale Videoauflösung (720, 1080, etc. oder 0 = keine Limit)
+  min_resolution_height: 0
+  
+  # Formate ausschließen (leer = keine ausgeschlossen)
+  exclude_formats: []
+    # Beispiel:
+    # - mov
+    # - flv
+
+# ============================================================================
+# CLEANUP & SICHERHEIT
+# ============================================================================
+cleanup:
+  # Originale Dateien nach erfolgreicher Konvertierung verschieben
+  move_original: true
+  
+  # Unvollständige Dateien automatisch löschen
+  remove_incomplete: true
+  
+  # Backup der Original vor Konvertierung
+  create_backup: false
+
+# ============================================================================
+# LOGGING & REPORTING
+# ============================================================================
+logging:
+  # Logging-Level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+  
+  # Speichere Logs (true/false)
+  save_logs: true
+  
+  # Erstelle Statistik-Report
+  create_report: true
+  
+  # Report-Format: json, txt, csv
+  report_format: "txt"
+
+# ============================================================================
+# FEHLERBEHANDLUNG
+# ============================================================================
+error_handling:
+  # Maximale Retry-Versuche
+  max_retries: 3
+  
+  # Wartezeit zwischen Retries (Sekunden)
+  retry_wait_seconds: 5
+  
+  # Stoppt bei erstem Fehler (false = ignoriertFehler)
+  stop_on_error: false
+
+# ============================================================================
+# FORTSCHRITT & TIMEOUTS
+# ============================================================================
+performance:
+  # Zeige Progress-Bar (true/false)
+  show_progress: true
+  
+  # Timeout pro Datei (Sekunden, 0 = kein Timeout)
+  conversion_timeout_seconds: 3600
+  
+  # Zeige Video-Info vor Konvertierung
+  show_video_info: true

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  video-converter:
+    build: .
+    container_name: video-converter
+    volumes:
+      # Verzeichnis mit Video-Dateien
+      - ./videos:/data
+      # Konfiguration
+      - ./config.yaml:/app/config.yaml:ro
+      # Outputs
+      - ./720p:/data/720p
+      - ./done:/data/done
+      - ./logs:/data/logs
+    environment:
+      - TZ=UTC
+    # Behalte Container nach Ausführung nicht
+    restart: "no"
+    # Beispiel Kommand-Override:
+    # command: --preset fast --dry-run

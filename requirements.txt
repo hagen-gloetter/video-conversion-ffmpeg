@@ -1,0 +1,11 @@
+# Optionale Python-Abhängigkeiten
+# Installieren mit: pip install -r requirements.txt
+
+# Für YAML-Konfiguration:
+pyyaml>=6.0
+
+# Für Progress-Bar:
+tqdm>=4.65
+
+# Optional: für besseres Fehler-Handling:
+# (sind aber nicht zwingend nötig)

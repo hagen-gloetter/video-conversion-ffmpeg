@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+*.log
+720p/
+done/
+logs/
+*.md
+.resume
+.vscode
+__pycache__
+*.pyc
+.DS_Store
+node_modules
