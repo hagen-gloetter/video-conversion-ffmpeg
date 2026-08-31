@@ -23,9 +23,7 @@ Professionelle Videokonvertierung zu 720p H.265 mit Hardware-Acceleration, Confi
 ### 1️⃣ Schnellstart (im Ordner mit Videos)
 ```bash
 # Einfach kopieren und ausführen - das war's!
-cp hg_convert_movie_to_720p_mk3.py /mnt/videos/
-cd /mnt/videos/
-python3 hg_convert_movie_to_720p_mk3.py
+python3 hg_convert_movie_to_720p.py /mnt/videos/
 ```
 
 Alle Videos im Ordner werden konvertiert! ✅
@@ -33,7 +31,7 @@ Alle Videos im Ordner werden konvertiert! ✅
 ### 2️⃣ Optional: Parameter anpassen
 Datei öffnen und bearbeiten:
 ```python
-# hg_convert_movie_to_720p_mk3.py - oben in der Datei
+# hg_convert_movie_to_720p.py - oben in der Datei
 OUTPUT_DIR = "720p"                     # Ziel-Verzeichnis
 CRF_VALUE = 22                          # Qualität (22=besser, 20=sehr gut, etc.)
 PRESET = "slow"                         # Geschwindigkeit
@@ -44,7 +42,7 @@ MAX_THREADS = auto (80% der CPU)        # Parallel-Threads
 ### 3️⃣ Optional: config.yaml für Override
 ```bash
 # Wenn PyYAML installiert: config.yaml kann Parameter überschreiben
-python3 hg_convert_movie_to_720p_mk3.py --config config.yaml
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --config config.yaml
 ```
 
 ---
@@ -71,31 +69,31 @@ python3 hg_convert_movie_to_720p_mk3.py --config config.yaml
 
 ### Szenario 1: Schnelle Konvertierung
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py --preset fast
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --preset fast
 # 45-50% Größenersparnis, 3x schneller!
 ```
 
 ### Szenario 2: Beste Qualität
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py --preset ultra
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --preset ultra
 # 65-70% Größenersparnis, beste Qualität, aber 4x langsamer
 ```
 
 ### Szenario 3: Test ohne echte Konvertierung  
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py --dry-run
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --dry-run
 # Zeigt was würde konvertiert ohne es zu tun
 ```
 
 ### Szenario 4: Nur große Dateien
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py --min-size 500 --preset high_quality
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --min-size 500 --preset high_quality
 # Nur Dateien >500MB, beste Qualität
 ```
 
 ### Szenario 5: Format ausschließen
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py --exclude flv wmv
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --exclude flv wmv
 # Ignoriere .flv und .wmv Dateien
 ```
 
@@ -133,12 +131,13 @@ ffmpeg -version  # Prüfe Installation
 
 ---
 
-## 🔧 CLI Arguments (mk3.py)
+## 🔧 CLI Arguments
 
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py [OPTIONS]
+python3 hg_convert_movie_to_720p.py [PFAD] [OPTIONS]
 
 Options:
+  PFAD                  Verzeichnis mit Videodateien; nur PFAD aktiviert Automatik
   --preset {fast|balanced|high_quality|ultra}
                         Qualitäts-Preset
   --dry-run             Zeige was würde konvertiert ohne zu konvertieren
@@ -156,8 +155,7 @@ Options:
 
 | Skript | Funktion | Besonderheit |
 |--------|----------|---|
-| **hg_convert_movie_to_720p_mk3.py** | Alle Formate + CLI | Neueste, alle Features, STANDALONE |
-| **hg_convert_movie_to_720p_mk2.py** | Einfache Konvertierung | Solide, bewährt, STANDALONE |
+| **hg_convert_movie_to_720p.py** | Alle Formate + CLI | Einzige Python-Version, Automatik bei Pfad-only-Aufruf |
 | **convert.sh** | Bash-Version | Shell-Script, STANDALONE |
 | **convert_flv.sh** | FLV→MP4 speziell | Format-spezifisch, STANDALONE |
 | **convert_wmv.sh** | WMV→MP4 speziell | Format-spezifisch, STANDALONE |
@@ -194,8 +192,7 @@ docker run -v $(pwd)/videos:/data -v $(pwd)/config.yaml:/app/config.yaml video-c
 
 ```
 video-conversion-ffmpeg/
-├── hg_convert_movie_to_720p_mk3.py  ← Neueste (Python, alle Features, mk3)
-├── hg_convert_movie_to_720p_mk2.py  ← Bewährt (Python, simpel, mk2)
+├── hg_convert_movie_to_720p.py      ← Einzige Python-Version (alle Features + Automatik)
 ├── hg_convert_movie_to_720p.sh      ← Parallel (Bash, multi-threaded)
 ├── convert.sh                        ← Basic (Bash, universell)
 ├── convert_flv.sh                    ← FLV-spezifisch (Bash)
@@ -222,15 +219,15 @@ video-conversion-ffmpeg/
 
 ---
 
-## 🚀 Advanced Features (mk3)
+## 🚀 Advanced Features (Python)
 
 ### 1. Resume nach Unterbruch
 ```bash
 # Job unterbrechen (Ctrl+C ist ok)
-python3 hg_convert_movie_to_720p_mk3.py
+python3 hg_convert_movie_to_720p.py /mnt/videos/
 
 # Später weitermachen
-python3 hg_convert_movie_to_720p_mk3.py --resume
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --resume
 ```
 
 ### 2. Statistik-Reports
@@ -253,7 +250,7 @@ Nutzt 80% der CPU für mehrere Videos gleichzeitig.
 
 ### Andere Auflösung (z.B. 1080p statt 720p)
 ```python
-# In hg_convert_movie_to_720p_mk3.py ändern:
+# In hg_convert_movie_to_720p.py ändern:
 SCALE_FILTER = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"
 ```
 
@@ -294,16 +291,16 @@ AUDIO_BITRATE = "192k"  # oder 256k, 320k, etc.
 GPL v3.0 - Siehe [LICENSE](LICENSE)
 
 # Nur hochauflösende Videos (>=1080p)
-python3 hg_convert_movie_to_720p_mk3.py --min-res 1080
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --min-res 1080
 
 # Bestimmte Formate ausschließen
-python3 hg_convert_movie_to_720p_mk3.py --exclude mov flv
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --exclude mov flv
 
 # Kombiniert
-python3 hg_convert_movie_to_720p_mk3.py --preset fast --min-size 50 --dry-run
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --preset fast --min-size 50 --dry-run
 
 # Weitermachen nach Unterbruch
-python3 hg_convert_movie_to_720p_mk3.py --resume
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --resume
 ```
 
 ### Docker
@@ -328,8 +325,7 @@ docker-compose run video-converter --preset fast --dry-run
 
 ```
 video-conversion-ffmpeg/
-├── hg_convert_movie_to_720p_mk3.py     ← NEUE: Voll-Features Version
-├── hg_convert_movie_to_720p_mk2.py     ← ALT: vorherige Version
+├── hg_convert_movie_to_720p.py         ← Python: Voll-Features Version
 ├── convert.sh                           ← Bash Universal
 ├── convert_flv.sh                       ← Bash FLV-spezifisch
 ├── convert_wmv.sh                       ← Bash WMV-spezifisch
@@ -420,9 +416,10 @@ ultra:         2000s  →  175 MB  (65% Ersparnis) 🐌
 ## 📝 CLI Argumente
 
 ```bash
-python3 hg_convert_movie_to_720p_mk3.py [OPTIONS]
+python3 hg_convert_movie_to_720p.py [PFAD] [OPTIONS]
 
 Options:
+  PFAD                 Verzeichnis mit Videos; nur PFAD aktiviert Automatik
   --preset {fast,balanced,high_quality,ultra}
                         Qualitäts-Preset verwenden
   --dry-run            Zeige was konvertiert würde (ohne echte Konvertierung)
@@ -487,7 +484,7 @@ Größe Konvertiert: 100.0MB
 [INFO] Konvertierung unterbrochen...
 
 # Später weitermachen:
-python3 hg_convert_movie_to_720p_mk3.py --resume
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --resume
 [INFO] Lade Resume-State...
 [INFO] Gefunden: 5 Dateien (3 bereits verarbeitet, 2 verbleibend)
 ```
@@ -504,21 +501,21 @@ cp config.yaml config_fast.yaml
 cp config.yaml config_hq.yaml
 
 # Und nutze sie:
-python3 hg_convert_movie_to_720p_mk3.py --config config_fast.yaml
-python3 hg_convert_movie_to_720p_mk3.py --config config_hq.yaml
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --config config_fast.yaml
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --config config_hq.yaml
 ```
 
 ### Batch-Verarbeitung mit Filtern
 
 ```bash
 # Nur große Dateien
-python3 hg_convert_movie_to_720p_mk3.py --min-size 500 --preset fast
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --min-size 500 --preset fast
 
 # Nur HD-Videos
-python3 hg_convert_movie_to_720p_mk3.py --min-res 720
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --min-res 720
 
 # Ausschließen von bestimmten Formaten
-python3 hg_convert_movie_to_720p_mk3.py --exclude flv wmv
+python3 hg_convert_movie_to_720p.py /mnt/videos/ --exclude flv wmv
 ```
 
 ### Docker mit Volume-Mounting
@@ -580,16 +577,17 @@ Wenn Encoder fehlschlägt: **Automatisch nächster in der Chain**
 
 ## 📋 Skript-Optionen (Overviow/Vergleich)
 
-| Feature | mk3.py (NEU) | mk2.py | Bash |
-|---------|-------------|--------|------|
-| config.yaml | ✅ | ❌ | ⚠️ |
-| Presets | ✅ | ❌ | ⚠️ |
-| Dry-run | ✅ | ❌ | ❌ |
-| Progress-Bar | ✅ | ❌ | ❌ |
-| Retry-Logik | ✅ | ⚠️ | ❌ |
-| ffprobe Info | ✅ | ❌ | ❌ |
-| Reports | ✅ | ❌ | ❌ |
-| Filtering | ✅ | ❌ | ❌ |
+| Feature | Python | Bash |
+|---------|--------|------|
+| config.yaml | ✅ | ⚠️ |
+| Presets | ✅ | ⚠️ |
+| Pfad-Parameter mit Automatik | ✅ | ✅ |
+| Dry-run | ✅ | ❌ |
+| Progress-Bar | ✅ | ❌ |
+| Retry-Logik | ✅ | ❌ |
+| ffprobe Info | ✅ | ❌ |
+| Reports | ✅ | ❌ |
+| Filtering | ✅ | ❌ |
 | Resume | ✅ | ❌ | ❌ |
 | Docker | ✅ | ⚠️ | ⚠️ |
 | Parallelize | ✅ | ✅ | ✅ |

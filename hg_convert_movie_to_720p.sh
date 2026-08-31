@@ -30,19 +30,19 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE" >&2
 }
 
 log_success() {
-    echo -e "${GREEN}[✓]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GREEN}[✓]${NC} $1" | tee -a "$LOG_FILE" >&2
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$LOG_FILE" >&2
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE" >&2
 }
 
 detect_system() {
@@ -58,34 +58,63 @@ detect_system() {
     echo "$os"
 }
 
+has_encoder() {
+    local encoder="$1"
+    ffmpeg -hide_banner -encoders 2>/dev/null | awk -v encoder="$encoder" '$1 ~ /^V/ && $2 == encoder { found=1 } END { exit !found }'
+}
+
+encoder_works() {
+    local encoder="$1"
+    ffmpeg -hide_banner -loglevel error \
+        -f lavfi -i testsrc=size=16x16:rate=1 -frames:v 1 \
+        -c:v "$encoder" -f null - >/dev/null 2>&1
+}
+
 get_encoder() {
     local system=$1
     
-    if [[ "$system" == "macOS" ]] && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q "hevc_videotoolbox"; then
+    if [[ "$system" == "macOS" ]] && has_encoder "hevc_videotoolbox" && encoder_works "hevc_videotoolbox"; then
         log_info "Nutze hevc_videotoolbox (Apple Silicon/Intel)"
         echo "hevc_videotoolbox"
         return
+    elif [[ "$system" == "macOS" ]] && has_encoder "hevc_videotoolbox"; then
+        log_warning "hevc_videotoolbox gefunden, aber Test-Encoding fehlgeschlagen"
     fi
     
-    if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q "hevc_nvenc"; then
+    if has_encoder "hevc_nvenc" && encoder_works "hevc_nvenc"; then
         log_info "Nutze hevc_nvenc (NVIDIA GPU)"
         echo "hevc_nvenc"
         return
+    elif has_encoder "hevc_nvenc"; then
+        log_warning "hevc_nvenc gefunden, aber Test-Encoding fehlgeschlagen"
     fi
     
-    if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q "libx265"; then
+    if has_encoder "libx265" && encoder_works "libx265"; then
         log_info "Nutze libx265 (H.265/HEVC)"
         echo "libx265"
         return
+    elif has_encoder "libx265"; then
+        log_warning "libx265 gefunden, aber Test-Encoding fehlgeschlagen"
     fi
     
-    if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q "libx264"; then
+    if has_encoder "libx264" && encoder_works "libx264"; then
         log_warning "libx265 nicht verfügbar, nutze libx264"
         echo "libx264"
         return
+    elif has_encoder "libx264"; then
+        log_warning "libx264 gefunden, aber Test-Encoding fehlgeschlagen"
+    fi
+
+    if has_encoder "mpeg4" && encoder_works "mpeg4"; then
+        log_warning "libx265/libx264 nicht verfügbar, nutze mpeg4 als Kompatibilitäts-Fallback"
+        echo "mpeg4"
+        return
+    elif has_encoder "mpeg4"; then
+        log_warning "mpeg4 gefunden, aber Test-Encoding fehlgeschlagen"
     fi
     
     log_error "Kein passender Video-Encoder gefunden!"
+    log_error "Installiere für bessere Ergebnisse ein FFmpeg-Paket mit libx264/libx265-Unterstützung."
     exit 1
 }
 
@@ -141,12 +170,21 @@ convert_video() {
                 -tag:v hvc1 \
                 "$output_file" 2>&1
             ;;
-        *)
+        libx264)
             ffmpeg -hide_banner -loglevel error -i "$input_file" \
                 -vf "$(get_scale_filter)" \
                 -c:v libx264 \
                 -crf "$CRF_VALUE" \
                 -preset "$PRESET" \
+                -c:a aac -b:a "$AUDIO_BITRATE" \
+                -movflags +faststart \
+                "$output_file" 2>&1
+            ;;
+        mpeg4)
+            ffmpeg -hide_banner -loglevel error -i "$input_file" \
+                -vf "$(get_scale_filter)" \
+                -c:v mpeg4 \
+                -q:v 5 \
                 -c:a aac -b:a "$AUDIO_BITRATE" \
                 -movflags +faststart \
                 "$output_file" 2>&1
@@ -175,7 +213,16 @@ convert_video() {
 
 set -euo pipefail
 
+# In Zielverzeichnis wechseln falls als Parameter übergeben
+TARGET_DIR="${1:-.}"
+if [ ! -d "$TARGET_DIR" ]; then
+    log_error "Verzeichnis nicht gefunden: $TARGET_DIR"
+    exit 1
+fi
+cd "$TARGET_DIR"
+
 log_info "=== Video-Konvertierung gestartet (Parallel) ==="
+log_info "Arbeitsverzeichnis: $(pwd)"
 log_info "CPU-Kerne: $(nproc 2>/dev/null || echo ?) | Max Threads: $MAX_THREADS"
 log_info "Qualität: CRF=$CRF_VALUE | Preset=$PRESET | Audio=$AUDIO_BITRATE"
 
@@ -208,27 +255,43 @@ log_info "========================================"
 success=0
 failed=0
 count=0
+completed=0
+pids=()
+
+wait_for_next_job() {
+    local pid="${pids[0]}"
+
+    if wait "$pid"; then
+        success=$((success + 1))
+    else
+        failed=$((failed + 1))
+    fi
+
+    completed=$((completed + 1))
+    pids=("${pids[@]:1}")
+    log_info "Fortschritt: $completed/$file_count abgeschlossen (Erfolgreich: $success | Fehlgeschlagen: $failed)"
+}
 
 for file in "${files[@]}"; do
     if [ -f "$file" ]; then
-        ((count++))
+        count=$((count + 1))
         
         # Warte auf freien Slot wenn max Threads erreicht
-        while [ $(jobs -r | wc -l) -ge $MAX_THREADS ]; do
-            sleep 0.5
+        while [ "${#pids[@]}" -ge "$MAX_THREADS" ]; do
+            wait_for_next_job
         done
         
         # Starte Konvertierung im Hintergrund
-        convert_video "$file" "$ENCODER" >> "$LOG_FILE" 2>&1 && {
-            ((success++)) || true
-        } || {
-            ((failed++)) || true
-        } &
+        log_info "Plane Datei $count/$file_count: $file"
+        convert_video "$file" "$ENCODER" >> "$LOG_FILE" 2>&1 &
+        pids+=("$!")
     fi
 done
 
 # Warte auf alle Background-Jobs
-wait
+while [ "${#pids[@]}" -gt 0 ]; do
+    wait_for_next_job
+done
 
 echo "========================================"
 log_info "=== ZUSAMMENFASSUNG ==="

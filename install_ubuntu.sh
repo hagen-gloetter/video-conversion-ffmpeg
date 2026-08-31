@@ -80,10 +80,10 @@ echo "2. Mache Scripts ausführbar:"
 echo "   chmod +x *.sh"
 echo
 echo "3. Starte Konvertierung (Python):"
-echo "   python3 hg_convert_movie_to_720p_mk2.py"
+echo "   python3 hg_convert_movie_to_720p.py /pfad/zu/videos"
 echo
 echo "   oder (Bash):"
-echo "   ./convert.sh"
+echo "   ./hg_convert_movie_to_720p.sh /pfad/zu/videos"
 echo
 echo "4. Konfiguriere bei Bedarf die Qualität in den Scripts (CRF_VALUE, PRESET)"
 echo

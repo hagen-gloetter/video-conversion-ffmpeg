@@ -1,0 +1,33 @@
+# Normalize text files to LF for WSL, Linux, macOS, and Docker.
+* text=auto eol=lf
+
+# Source files
+*.sh text eol=lf
+*.bash text eol=lf
+*.py text eol=lf
+
+# Configuration and documentation
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+LICENSE text eol=lf
+.dockerignore text eol=lf
+.gitignore text eol=lf
+
+# Generated logs and media files are not normalized as text.
+*.log binary
+*.mp4 binary
+*.mkv binary
+*.avi binary
+*.mov binary
+*.webm binary
+*.wmv binary
+*.flv binary
+*.m4v binary
+*.mts binary
+*.m2ts binary
+720p/** binary
+done/** binary

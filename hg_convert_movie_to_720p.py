@@ -114,7 +114,7 @@ IS_MAC = SYSTEM == "Darwin"
 IS_LINUX = SYSTEM == "Linux"
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_FILE = SCRIPT_DIR / 'config.yaml'
-RESUME_FILE = SCRIPT_DIR / '.conversion.resume'
+RESUME_FILE = Path('.conversion.resume')
 STATS_FILE = None
 
 
@@ -132,6 +132,7 @@ def setup_logging(log_level='INFO', save_logs=True, log_dir='logs'):
     # Logger
     logger = logging.getLogger()
     logger.setLevel(log_level)
+    logger.handlers.clear()
     
     # Console Handler
     console = logging.StreamHandler(sys.stdout)
@@ -155,6 +156,21 @@ def setup_logging(log_level='INFO', save_logs=True, log_dir='logs'):
         return logger, log_file
     
     return logger, None
+
+def apply_preset(config: Dict, preset_name: str) -> bool:
+    """Überträgt ein Qualitäts-Preset auf die aktiven Encoding-Werte."""
+    preset_config = config['presets'].get(preset_name)
+    if not preset_config:
+        return False
+
+    if 'crf' in preset_config:
+        config['encoding']['crf_value'] = preset_config['crf']
+    if 'preset' in preset_config:
+        config['encoding']['preset'] = preset_config['preset']
+    if 'audio_bitrate' in preset_config:
+        config['encoding']['audio_bitrate'] = preset_config['audio_bitrate']
+
+    return True
 
 # ============================================================================
 # KONFIGURATION LADEN
@@ -214,35 +230,60 @@ def check_ffprobe():
     except:
         return False
 
-def get_available_encoder() -> str:
-    """Findet optimalen Video-Encoder"""
+def get_ffmpeg_encoders() -> set:
+    """Liest verfügbare Video-Encoder aus FFmpeg."""
     try:
         result = subprocess.run(
             ['ffmpeg', '-hide_banner', '-encoders'],
-            capture_output=True, text=True, timeout=5
+            capture_output=True, text=True, timeout=10, check=True
         )
-        encoders = result.stdout
-        
-        if IS_MAC and 'hevc_videotoolbox' in encoders:
-            logging.info("🍎 Hardware-Encoder: hevc_videotoolbox (Apple Silicon)")
-            return "hevc_videotoolbox"
-        
-        if 'hevc_nvenc' in encoders:
-            logging.info("🔷 Hardware-Encoder: hevc_nvenc (NVIDIA GPU)")
-            return "hevc_nvenc"
-        
-        if 'libx265' in encoders:
-            logging.info("💻 Software-Encoder: libx265 (H.265/HEVC)")
-            return "libx265"
-        
-        if 'libx264' in encoders:
-            logging.info("⚙️ Fallback-Encoder: libx264 (H.264)")
-            return "libx264"
-        
-        raise Exception("Kein Video-Encoder verfügbar")
     except Exception as e:
-        logging.error(f"Encoder-Erkennung fehlgeschlagen: {e}")
-        raise
+        raise RuntimeError(f"Encoder-Liste konnte nicht gelesen werden: {e}") from e
+
+    encoders = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith('V'):
+            encoders.add(parts[1])
+
+    return encoders
+
+def encoder_works(encoder: str) -> bool:
+    """Prüft, ob ein gelisteter Encoder wirklich ein Testbild kodieren kann."""
+    result = subprocess.run([
+        'ffmpeg', '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi', '-i', 'testsrc=size=16x16:rate=1',
+        '-frames:v', '1', '-c:v', encoder, '-f', 'null', '-'
+    ], capture_output=True, timeout=15)
+
+    return result.returncode == 0
+
+def get_available_encoder() -> str:
+    """Findet den besten tatsächlich nutzbaren Video-Encoder."""
+    encoders = get_ffmpeg_encoders()
+    candidates = []
+
+    if IS_MAC:
+        candidates.append(('hevc_videotoolbox', '🍎 Hardware-Encoder: hevc_videotoolbox (Apple Silicon/Intel)'))
+
+    candidates.extend([
+        ('hevc_nvenc', '🔷 Hardware-Encoder: hevc_nvenc (NVIDIA GPU)'),
+        ('libx265', '💻 Software-Encoder: libx265 (H.265/HEVC)'),
+        ('libx264', '⚙️ Fallback-Encoder: libx264 (H.264)'),
+        ('mpeg4', '⚙️ Kompatibilitäts-Fallback: mpeg4'),
+    ])
+
+    for encoder, message in candidates:
+        if encoder not in encoders:
+            continue
+
+        if encoder_works(encoder):
+            logging.info(message)
+            return encoder
+
+        logging.warning(f"{encoder} gefunden, aber Test-Encoding fehlgeschlagen")
+
+    raise RuntimeError("Kein nutzbarer Video-Encoder verfügbar")
 
 # ============================================================================
 # VIDEO-INFORMATION MIT FFPROBE
@@ -351,7 +392,7 @@ def build_ffmpeg_command(input_file: str, output_file: str, encoder: str, config
             '-movflags', '+faststart', '-tag:v', 'hvc1',
             output_file
         ]
-    else:  # libx264 fallback
+    elif encoder == 'libx264':
         cmd = [
             'ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', input_file,
             '-vf', scale,
@@ -361,6 +402,17 @@ def build_ffmpeg_command(input_file: str, output_file: str, encoder: str, config
             '-movflags', '+faststart',
             output_file
         ]
+    elif encoder == 'mpeg4':
+        cmd = [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', input_file,
+            '-vf', scale,
+            '-c:v', 'mpeg4', '-q:v', '5',
+            '-c:a', 'aac', '-b:a', enc.get('audio_bitrate', '128k'),
+            '-movflags', '+faststart',
+            output_file
+        ]
+    else:
+        raise ValueError(f"Unbekannter Encoder: {encoder}")
     
     return cmd
 
@@ -503,11 +555,33 @@ Logs: {Path(config['directories']['logs']).absolute()}
     report_file.write_text(content)
     logging.info(f"📊 Report erstellt: {report_file}")
 
+def apply_auto_options(config: Dict, encoder: str) -> str:
+    """Wählt ohne weitere CLI-Optionen sinnvolle Qualitäts-/Kompressionswerte."""
+    preset_name = 'high_quality' if encoder in {'hevc_videotoolbox', 'hevc_nvenc', 'libx265'} else 'balanced'
+    apply_preset(config, preset_name)
+
+    if encoder == 'mpeg4':
+        config['parallel']['max_threads'] = min(config['parallel'].get('max_threads') or MAX_THREADS, 2)
+    else:
+        config['parallel']['max_threads'] = config['parallel'].get('max_threads') or MAX_THREADS
+
+    logging.info(
+        "Automatik aktiv: Preset=%s | CRF=%s | Preset-Speed=%s | Audio=%s | Threads=%s",
+        preset_name,
+        config['encoding'].get('crf_value'),
+        config['encoding'].get('preset'),
+        config['encoding'].get('audio_bitrate'),
+        config['parallel'].get('max_threads')
+    )
+    return preset_name
+
 # ============================================================================
 # HAUPTPROGRAMM
 # ============================================================================
 def main():
     parser = argparse.ArgumentParser(description='Professionelle Video-Konvertierung')
+    parser.add_argument('path', nargs='?', default='.',
+                       help='Verzeichnis mit Videodateien (Default: aktuelles Verzeichnis)')
     parser.add_argument('--preset', choices=['fast', 'balanced', 'high_quality', 'ultra'],
                        help='Qualitäts-Preset')
     parser.add_argument('--dry-run', action='store_true', 
@@ -521,11 +595,22 @@ def main():
     parser.add_argument('--resume', action='store_true',
                        help='Fahre mit unterbrochener Konvertierung fort')
     parser.add_argument('--config', type=str, help='Pfad zu config.yaml')
+    parser.add_argument('--no-report', action='store_true',
+                       help='Erstelle keinen Abschluss-Report')
     
     args = parser.parse_args()
+    only_path_argument = len(sys.argv) == 2 and not sys.argv[1].startswith('-')
+    config_file = str(Path(args.config).expanduser().resolve()) if args.config else None
+    target_dir = Path(args.path).expanduser().resolve()
+
+    if not target_dir.is_dir():
+        print(f"Fehler: Verzeichnis nicht gefunden: {target_dir}", file=sys.stderr)
+        return 1
+
+    os.chdir(target_dir)
     
     # Config laden (mit optionalem config-Datei-Pfad)
-    config = load_config(args.config)
+    config = load_config(config_file)
 
     # Logging setup
     logger, log_file = setup_logging(
@@ -540,9 +625,7 @@ def main():
     
     # Wende CLI-Argumente an
     if args.preset:
-        preset_config = config['presets'].get(args.preset)
-        if preset_config:
-            config['encoding'].update(preset_config)
+        if apply_preset(config, args.preset):
             logging.info(f"📋 Preset verwendet: {args.preset}")
     
     if args.min_size:
@@ -581,6 +664,9 @@ def main():
     except Exception as e:
         logging.error(f"Encoder-Erkennung fehlgeschlagen: {e}")
         return 1
+
+    if only_path_argument:
+        apply_auto_options(config, encoder)
     
     # Konvertierung
     stats = {
@@ -615,17 +701,18 @@ def main():
                 config['error_handling'].get('max_retries', 3),
                 args.dry_run
             )
-            futures[future] = (file, output_file)
+            original_size_mb = Path(file).stat().st_size / 1024 / 1024
+            futures[future] = (file, output_file, original_size_mb)
         
         for future in concurrent.futures.as_completed(futures):
-            file, output_file = futures[future]
+            file, output_file, original_size_mb = futures[future]
             
             try:
                 if future.result():
                     stats['success'] += 1
                     if Path(output_file).exists():
                         stats['converted_size_total'] += Path(output_file).stat().st_size / 1024 / 1024
-                    stats['original_size_total'] += Path(file).stat().st_size / 1024 / 1024 if Path(file).exists() else 0
+                    stats['original_size_total'] += original_size_mb
                     processed.add(file)
                 else:
                     stats['failed'] += 1

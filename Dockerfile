@@ -26,15 +26,15 @@ RUN pip3 install --no-cache-dir \
 WORKDIR /data
 
 # Kopiere Scripts
-COPY hg_convert_movie_to_720p_mk3.py /app/
+COPY hg_convert_movie_to_720p.py /app/
 COPY config.yaml /app/
-RUN chmod +x /app/hg_convert_movie_to_720p_mk3.py
+RUN chmod +x /app/hg_convert_movie_to_720p.py
 
 # Erstelle Ausgabe-Verzeichnisse
 RUN mkdir -p /data/{720p,done,logs}
 
 # Default-Kommando
-ENTRYPOINT ["/app/hg_convert_movie_to_720p_mk3.py"]
+ENTRYPOINT ["/app/hg_convert_movie_to_720p.py"]
 CMD ["--help"]
 
 # Health Check
